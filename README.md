@@ -27,8 +27,9 @@ Install dependencies:
 
 pip install -r requirements.txt
 Run the program:
-```
 python main.py
+```
+
 ```
 Docker Setup
 Build the Docker image:
@@ -56,7 +57,7 @@ For development, set ENVIRONMENT=development in your .env file to install develo
 
 Contributing
 Contributions are welcome! Please submit a pull request or create an issue to discuss your ideas.
-
+```
 License
 MIT
 
