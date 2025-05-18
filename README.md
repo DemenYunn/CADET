@@ -21,22 +21,15 @@ CADET is a code evolution program inspired by the "alpha evolve" paper. This pro
 1. Clone the repository:
    ```bash
    git clone https://github.com/DemenYunn/CADET.git
-   cd CADET
-```
+   cd CADET```
 2.Install dependencies:
-```
-pip install -r requirements.txt
-```
+```pip install -r requirements.txt```
 Run the program:
-```
-python main.py
-```
+```python main.py```
 #Docker Setup
 #Build the Docker image:
 
-```
-docker-compose build
-```
+```docker-compose build```
 Run the container:
 ```
 docker-compose run --rm code-evolver python main.py
