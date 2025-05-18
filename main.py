@@ -91,31 +91,44 @@ class CodeEvolver:
         self.conversation_history = [
             {
                 "role": "system",
-                "content": f"""You are a code evolution assistant. Your task is to improve Python functions 
-                with a focus on {self.improvement_factor} through an evolutionary process.
+                "content": f"""You are a code optimization expert. Your task is to optimize Python code 
+                with a focus on {self.improvement_factor}. The code should perform the same logical operation 
+                as the original but with improved performance characteristics.
                 
-                Guidelines:
-                1. Always return only the Python function code, no explanations or markdown
-                2. The function must be named 'c' and take a single parameter
-                3. Focus on {self.improvement_factor} in your improvements
-                4. Maintain the same function signature and return type
-                5. Keep the code simple and readable
+                IMPORTANT REQUIREMENTS:
+                1. The optimized code MUST produce EXACTLY the same output as the original for all valid inputs
+                2. For performance optimization, consider:
+                   - Algorithmic complexity (O(n) vs O(n^2) etc.)
+                   - Built-in functions and libraries
+                   - Loop optimizations
+                   - Memory usage patterns
+                   - Python-specific optimizations (list comprehensions, generator expressions, etc.)
                 
-                The function will be tested with various inputs and must return the expected outputs.
+                Code Requirements:
+                1. Function must be named 'c' and take a single parameter
+                2. No external dependencies unless absolutely necessary
+                3. Must maintain the same function signature and return type
+                4. Include type hints where beneficial
+                5. Add brief comments for non-obvious optimizations
+                
+                Example optimizations:
+                - Replace loops with vectorized operations
+                - Use more efficient data structures
+                - Cache results of expensive operations
+                - Use built-in functions instead of manual loops
+                - Eliminate redundant calculations
+                
+                The code will be tested with various inputs and must return the expected outputs.
                 """
             }
         ]
         
-        # Define factor evaluation criteria for function-based evaluation
-        self.factor_evaluators = {
-            'efficiency': self._evaluate_efficiency,
-            'readability': self._evaluate_readability,
-            'simplicity': self._evaluate_simplicity,
-            'maintainability': self._evaluate_maintainability
-        }
-        
-        # Store test cases for execution time measurement
+        # Store test cases for evaluation
         self.test_cases = evaluator.test_cases
+        
+        # Remove any old evaluator references
+        if hasattr(self, 'factor_evaluators'):
+            delattr(self, 'factor_evaluators')
     def _validate_code_structure(self, code: str) -> bool:
         """
         Validate that the code has proper Python structure.
@@ -195,7 +208,7 @@ Separate each implementation with '\n---\n'."""}
                     model=self.model,
                     messages=messages,
                     temperature=0.7,  # Slightly lower temperature for more reliable code
-                    max_tokens=1500
+                    max_tokens=10000
                 )
                 
                 # Parse the response into individual code snippets
@@ -400,84 +413,81 @@ Separate each implementation with '\n---\n'."""}
             selected.append(best[0])
         return selected
     
-    def _evaluate_efficiency(self, code: str) -> bool:
+    def _evaluate_with_ai(self, code: str) -> Tuple[bool, float]:
         """
-        Evaluate code efficiency based on some heuristics.
-        Returns True if the code meets efficiency criteria.
-        """
-        try:
-            # Simple heuristic: check for obvious inefficiencies
-            if 'for ' in code and 'range(' in code and 'len(' in code:
-                # Simple check for potential O(n^2) operations
-                return False
-            return True
-        except:
-            return False
+        Evaluate code using AI based on the current improvement factor.
+        
+        Args:
+            code: The code to evaluate
             
-    def _measure_execution_time(self, code: str, test_cases: List[Tuple[Any, Any]]) -> float:
-        """
-        Measure the average execution time of the code across multiple test cases.
-        Returns the average time in seconds.
+        Returns:
+            Tuple[bool, float]: (is_valid, score) where is_valid indicates if the code meets criteria,
+                             and score is a value between 0.0 and 1.0 representing quality
         """
         try:
-            # Create a namespace for the code to run in
-            namespace = {}
-            exec(code, namespace)
+            prompt = f"""
+            Analyze and evaluate the following Python code with focus on {self.improvement_factor}.
             
-            # Get the function from the namespace
-            if 'c' not in namespace:
-                return float('inf')  # Invalid code
-                
-            func = namespace['c']
+            Code to evaluate:
+            ```python
+            {code}
+            ```
             
-            # Time the function across all test cases
-            total_time = 0.0
-            num_runs = 1000  # Number of times to run each test case for accurate timing
+            Evaluation Criteria:
+            1. CORRECTNESS: Does the code produce the exact same output as the original?
+            2. PERFORMANCE: For the given input size, is this an optimal implementation?
+            3. READABILITY: Is the code clear and maintainable?
+            4. PYTHONIC: Does it follow Python best practices?
             
-            for input_val, _ in test_cases:
-                # Use timeit for more accurate timing
-                timer = timeit.Timer(lambda: func(input_val))
-                total_time += min(timer.repeat(repeat=3, number=num_runs)) / num_runs
-                
-            return total_time / len(test_cases)  # Return average time per test case
+            For performance evaluation, consider:
+            - Time complexity (Big-O notation)
+            - Memory usage and allocations
+            - Use of built-in functions and libraries
+            - Loop optimizations
+            - Redundant calculations
+            
+            Your response MUST be in this exact format:
+            VALID: <True/False>
+            SCORE: <0.0-1.0>
+            REASON: <Brief explanation of the score>
+            
+            Example:
+            VALID: True
+            SCORE: 0.85
+            REASON: Good use of list comprehension improves readability, but could be optimized further with built-ins.
+            """
+            
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": """You are an expert Python code evaluator. 
+                    Analyze the code and provide a boolean and score based on the given criteria."""},
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=0.2,
+                max_tokens=100
+            )
+            
+            # Parse the response
+            result = response.choices[0].message.content.strip()
+            valid = False
+            score = 0.0
+            
+            for line in result.split('\n'):
+                line = line.strip()
+                if line.startswith('VALID:'):
+                    valid = 'true' in line.lower()
+                elif line.startswith('SCORE:'):
+                    try:
+                        score = float(line.split(':')[1].strip())
+                    except (ValueError, IndexError):
+                        pass
+            
+            return valid, score
             
         except Exception as e:
-            print(f"Error measuring execution time: {e}")
-            return float('inf')  # Return infinity if there's an error
-    
-    def _evaluate_readability(self, code: str) -> bool:
-        """Evaluate code readability based on some heuristics."""
-        try:
-            # Simple heuristic: check line length and variable names
-            lines = code.split('\n')
-            for line in lines:
-                if len(line) > 100:  # Very long lines are hard to read
-                    return False
-            return True
-        except:
-            return False
-    
-    def _evaluate_simplicity(self, code: str) -> bool:
-        """Evaluate code simplicity based on some heuristics."""
-        try:
-            # Simple heuristic: count number of operations
-            if code.count(';') > 2:  # Multiple statements per line
-                return False
-            if len(code.split('\n')) > 10:  # Too many lines
-                return False
-            return True
-        except:
-            return False
-    
-    def _evaluate_maintainability(self, code: str) -> bool:
-        """Evaluate code maintainability based on some heuristics."""
-        try:
-            # Simple heuristic: check for comments and function length
-            if '#' not in code and len(code.split('\n')) > 5:
-                return False
-            return True
-        except:
-            return False
+            print(f"Error in AI evaluation: {e}")
+            return False, 0.0
     
     def _evaluate_with_lm_studio(self, code: str) -> bool:
         """
@@ -522,27 +532,21 @@ Separate each implementation with '\n---\n'."""}
     
     def _evaluate_factor(self, code: str) -> Tuple[bool, float]:
         """
-        Evaluate if the code meets the improvement factor criteria.
-        Returns a tuple of (is_valid, score) where score is execution time in ms.
+        Evaluate if the code meets the improvement factor criteria using AI.
+        Returns a tuple of (is_valid, score).
         """
-        success, message = self.evaluator.evaluate(code)
+        # First verify the code passes all test cases
+        success, _ = self.evaluator.evaluate(code)
         if not success:
-            return False, float('inf')
+            return False, 0.0
         
+        # Use AI to evaluate the code based on the improvement factor
         try:
-            # Extract the execution time from the message (in milliseconds)
-            if 'ms' in message:
-                time_str = message.replace('ms', '').strip()
-                execution_time = float(time_str)
-            else:
-                # If no 'ms' in message, try to convert directly
-                execution_time = float(message)
-                
-            return True, execution_time
-            
+            valid, score = self._evaluate_with_ai(code)
+            return valid, 1.0 - score  # Convert to minimization problem (lower is better)
         except Exception as e:
-            print(f"Error parsing execution time: {e}")
-            return False, float('inf')
+            print(f"Error in AI-based evaluation: {e}")
+            return False, 1.0  # Worst possible score on error
     
     def _ensure_population_uniqueness(self, population: List[str]) -> List[str]:
         """Ensure all individuals in the population are unique."""
