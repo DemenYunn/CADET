@@ -33,8 +33,8 @@ python main.py
 ```
 #Docker Setup
 #Build the Docker image:
-```
 
+```
 docker-compose build
 ```
 Run the container:
@@ -44,10 +44,11 @@ docker-compose run --rm code-evolver python main.py
 Configuration
 Environment Variables
 Create a .env file in the project root to set environment variables:
-
+```
 env
+```
 
-PYTHONUNBUFFERED=1
+```PYTHONUNBUFFERED=1```
 # Add other environment variables here
 Docker Configuration
 Edit docker-compose.yml to:
