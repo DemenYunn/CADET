@@ -1,0 +1,15 @@
+version: '3.8'
+
+services:
+  code-evolver:
+    build: .
+    container_name: code-evolver
+    volumes:
+      - .:/app
+    environment:
+      - PYTHONUNBUFFERED=1
+      # Add any other environment variables here (e.g., API keys)
+    working_dir: /app
+    tty: true  # Keeps the container running
+    # Uncomment and modify the command below to run with specific arguments
+    # command: python code_evolver.py --arg1 value1 --arg2 value2
