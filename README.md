@@ -60,7 +60,7 @@ For development, set ENVIRONMENT=development in your .env file to install develo
 
 Contributing
 Contributions are welcome! Please submit a pull request or create an issue to discuss your ideas.
-```
+
 License
 MIT
 
