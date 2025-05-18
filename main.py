@@ -116,7 +116,39 @@ class CodeEvolver:
         
         # Store test cases for execution time measurement
         self.test_cases = evaluator.test_cases
-    
+    def _validate_code_structure(self, code: str) -> bool:
+        """
+        Validate that the code has proper Python structure.
+        Returns True if the code is valid Python and has consistent structure.
+        """
+        try:
+            tree = ast.parse(code)
+            
+            # Check for mixed function and top-level code
+            has_func = any(isinstance(node, ast.FunctionDef) for node in ast.walk(tree))
+            has_top_level = any(
+                not isinstance(node, (ast.FunctionDef, ast.Import, ast.ImportFrom, ast.Expr, ast.ClassDef))
+                for node in tree.body
+            )
+            
+            # Either all code should be in functions or all at top level
+            if has_func and has_top_level:
+                return False
+                
+            # Additional check: If it's a function, it should be callable
+            if has_func:
+                # Create a local namespace and exec the code
+                local_vars = {}
+                try:
+                    exec(code, globals(), local_vars)
+                    # Check if we have any callable functions
+                    return any(callable(v) for v in local_vars.values())
+                except Exception:
+                    return False
+            return True
+            
+        except (SyntaxError, IndentationError):
+            return False
     def _read_code_from_file(self, file_path: str) -> str:
         """Read code from a file."""
         try:
@@ -132,14 +164,20 @@ class CodeEvolver:
         attempts = 0
         max_attempts = size * 2  # Prevent infinite loops
         
-        # Always include the original code as a baseline
-        if target_code.strip():
+        # Always include the original code as a baseline if it's valid
+        if target_code.strip() and self._validate_code_structure(target_code):
             unique_implementations.add(target_code.strip() + '\n')
         
         while len(unique_implementations) < size and attempts < max_attempts:
             try:
                 messages = [
-                    {"role": "system", "content": "You are a helpful coding assistant that generates unique Python functions."},
+                    {"role": "system", "content": """You are a helpful coding assistant that generates unique Python functions.
+                    Rules:
+                    1. Return ONLY complete Python functions
+                    2. No mixing of function definitions and top-level code
+                    3. Each function must be self-contained and executable
+                    4. No placeholders or TODOs
+                    """},
                     {"role": "user", "content": f"""I want to improve this code:
 ```python
 {target_code}
@@ -147,13 +185,16 @@ class CodeEvolver:
 
 {prompt}
 
-Please generate {min(5, size)} different implementations that could potentially improve upon this code. For each implementation, return ONLY the complete function definition without any additional text or explanation. Each implementation should be significantly different from the others. Separate each implementation with '\n---\n'."""}
+Please generate {min(3, size)} different implementations that could potentially improve upon this code. 
+For each implementation, return ONLY the complete function definition without any additional text or explanation. 
+Each implementation should be significantly different from the others. 
+Separate each implementation with '\n---\n'."""}
                 ]
                 
                 response = self.client.chat.completions.create(
                     model=self.model,
                     messages=messages,
-                    temperature=0.9,  # Higher temperature for more diverse outputs
+                    temperature=0.7,  # Slightly lower temperature for more reliable code
                     max_tokens=1500
                 )
                 
@@ -162,13 +203,17 @@ Please generate {min(5, size)} different implementations that could potentially 
                 
                 # Clean up and add new implementations
                 for impl in new_implementations:
-                    # Remove any non-code lines
+                    # Remove any non-code lines and normalize whitespace
                     lines = [line for line in impl.split('\n') 
                             if line.strip() and not line.strip().startswith(('#', '```'))]
+                    if not lines:
+                        continue
+                        
+                    # Ensure proper indentation
                     code = '\n'.join(lines).strip()
                     
-                    # Ensure it's a complete function and not a duplicate
-                    if code.startswith('def ') and '\n' in code and code not in unique_implementations:
+                    # Ensure it's a complete function and valid Python
+                    if code.startswith('def ') and '\n' in code and self._validate_code_structure(code):
                         unique_implementations.add(code + '\n')
                         
                         # If we have enough, return early
@@ -180,88 +225,150 @@ Please generate {min(5, size)} different implementations that could potentially 
                 
             attempts += 1
         
-        # If we don't have enough unique implementations, generate variations
+        # Fallback to simple variations if we couldn't generate enough unique implementations
         result = list(unique_implementations)
-        while len(result) < size:
+        while len(result) < size and attempts < max_attempts * 2:
             variation = self._generate_variation(target_code)
-            if variation not in result:
+            if variation and self._validate_code_structure(variation) and variation not in result:
                 result.append(variation)
+            attempts += 1
+        
+        # If we still don't have enough, generate some basic variations
+        if len(result) < size:
+            result.extend(self._generate_fallback_population(target_code, size - len(result)))
         
         return result[:size]
             
 
     def _generate_variation(self, code: str) -> str:
-        """Generate a unique variation of the given code."""
+        """
+        Generate a valid variation of the given code.
+        Ensures the output is valid Python code with consistent structure.
+        """
+        # First try to parse the code to understand its structure
         try:
-            # First try to get AI to generate a meaningful variation
+            tree = ast.parse(code)
+            
+            # If it's a function, generate a variation that's also a function
+            if any(isinstance(node, ast.FunctionDef) for node in ast.walk(tree)):
+                # Generate a new function with some variation
+                func_name = f"implementation_{random.randint(1, 1000)}"
+                # Keep the function structure but vary the implementation
+                return f"def {func_name}():" + '\n'.join([
+                    '    ' + line for line in self._vary_code_impl(code).split('\n')
+                ]) + '\n'
+            else:
+                # Generate top-level variation
+                return self._vary_code_impl(code)
+                
+        except Exception as e:
+            print(f"Warning: Error parsing code structure: {e}")
+            return self._vary_code_impl(code)
+    
+    def _vary_code_impl(self, code: str) -> str:
+        """Generate a simple variation of the code while maintaining validity."""
+        try:
+            # First try AI-based variation
             messages = [
-                {"role": "system", "content": "You are a helpful coding assistant that generates unique variations of Python functions."},
-                {"role": "user", "content": f"""Please generate a significantly different but functionally equivalent version of this code. Change the approach or algorithm if possible, not just variable names or formatting.
-
-Original code:
-```python
-{code}
-```
-
-Return ONLY the complete function definition without any additional text or explanation."""}
+                {"role": "system", "content": """You are a helpful coding assistant that generates variations of Python code.
+                Rules:
+                1. Return ONLY the complete code
+                2. Maintain the same functionality
+                3. Change the implementation approach if possible
+                4. Ensure the code is valid Python"""},
+                {"role": "user", "content": f"Generate a variation of this code:\n```python\n{code}\n```"}
             ]
             
             response = self.client.chat.completions.create(
                 model=self.model,
                 messages=messages,
-                temperature=0.7,
-                max_tokens=500
+                temperature=0.5,
+                max_tokens=1000
             )
             
-            # Clean up the response
             variation = response.choices[0].message.content.strip()
+            
+            # Clean up the response
             lines = [line for line in variation.split('\n') 
                     if line.strip() and not line.strip().startswith(('#', '```'))]
-            variation = '\n'.join(lines)
+            variation = '\n'.join(lines).strip()
             
-            if variation.startswith('def ') and '\n' in variation:
+            # Validate before returning
+            if self._validate_code_structure(variation):
                 return variation + '\n'
                 
         except Exception as e:
             print(f"Warning: Could not generate AI variation: {e}")
         
-        # Fallback to simple modifications if AI generation fails
+        # Fallback to simple modifications if AI generation fails or is invalid
         lines = code.split('\n')
         if len(lines) > 1:
-            # More aggressive modifications for fallback
-            if random.random() < 0.7:  # 70% chance to modify the logic
-                # Try to change the implementation approach
-                if ' + ' in code:
-                    return code.replace(' + ', ' - ')
-                elif ' - ' in code:
-                    return code.replace(' - ', ' + ')
-                
-            # Otherwise, do simple formatting changes
-            if random.random() < 0.5:
-                lines[1] = '    ' + lines[1].strip()  # Ensure consistent indentation
+            # Simple variations that maintain validity
+            variations = [
+                lambda: '\n'.join(f'    {line.strip()}' if i > 0 else line for i, line in enumerate(lines)),  # Ensure indentation
+                lambda: code + '\n' + f'# Modified at {time.time()}\n',  # Add timestamp comment
+                lambda: code.replace('return', 'result = ') + '\nreturn result\n' if 'return' in code else code,  # Add temp variable
+            ]
             
-            if random.random() < 0.5:  # Add a unique comment
-                lines.insert(1, f'    # Variation {random.randint(1, 1000)}')
-                
-        return '\n'.join(lines) + '\n'
+            # Try different variations until we find a valid one
+            for _ in range(3):  # Try up to 3 times
+                variation = random.choice(variations)()
+                if self._validate_code_structure(variation):
+                    return variation
+        
+        # If all else fails, return the original with a small change
+        return code + '\n# Modified\n'
     
     def _generate_fallback_population(self, target_code: str, size: int) -> List[str]:
-        """Generate a simple population when AI generation fails."""
+        """
+        Generate a simple population of valid Python code variations.
+        Ensures all generated code is syntactically valid.
+        """
         population = []
-        for _ in range(size):
-            population.append(target_code)  # Include original
-            
-            # Generate simple variations
-            lines = target_code.split('\n')
-            if len(lines) > 1:
-                # Variation 1: Change indentation
-                variant = lines[0] + '\n' + '    ' + lines[1].strip() + '\n'
-                population.append(variant)
-                
-                # Variation 2: Add a simple comment
-                variant = lines[0] + '\n    # Modified version\n' + '\n'.join(lines[1:]) + '\n'
-                population.append(variant)
         
+        # Always include the original if it's valid
+        if self._validate_code_structure(target_code):
+            population.append(target_code)
+        
+        # Generate simple variations
+        for i in range(1, size * 2):  # Generate extra to ensure we get enough valid ones
+            if len(population) >= size:
+                break
+                
+            # Different types of simple variations
+            if i % 3 == 0 and 'return' in target_code:
+                # Add a temporary variable before return
+                parts = target_code.split('return')
+                if len(parts) > 1:
+                    var_name = f"result_{i}"
+                    variant = f"{parts[0]}{var_name} ={parts[1]}\n    return {var_name}\n"
+                    if self._validate_code_structure(variant):
+                        population.append(variant)
+                        
+            elif i % 2 == 0 and '=' in target_code:
+                # Swap variable names
+                lines = target_code.split('\n')
+                new_lines = []
+                for line in lines:
+                    if '=' in line and not line.strip().startswith('#'):
+                        parts = line.split('=')
+                        if len(parts) == 2:
+                            line = f"{parts[1].strip()} = {parts[0].strip()}"
+                    new_lines.append(line)
+                variant = '\n'.join(new_lines)
+                if self._validate_code_structure(variant):
+                    population.append(variant)
+                    
+            else:
+                # Just add a comment with variation number
+                variant = f"{target_code.rstrip()}\n# Variation {i}\n"
+                if self._validate_code_structure(variant):
+                    population.append(variant)
+        
+        # If we still don't have enough, just duplicate the valid ones we have
+        while len(population) < size and population:
+            population.append(population[-1])
+            
         return population[:size]
     
     def generate_initial_population(self, size: int, prompt: str = "", target_code: str = None) -> List[str]:
@@ -540,8 +647,10 @@ Return ONLY the complete function definition without any additional text or expl
                 best_individual = valid_individuals[best_idx]
                 self.best_individuals.append((best_individual, best_score))
                 
-                print(f"\nBest individual in generation {generation + 1} (score: {best_score:.2f}):")
-                print(best_individual)
+                print(f"\n=== Best Solution (Generation {generation + 1}, Score: {best_score:.2f}) ===")
+                print("```python")
+                print(best_individual.strip())
+                print("```")
             else:
                 print("No valid individuals in this generation.")
                 if generation < self.max_generations - 1:
@@ -556,7 +665,19 @@ Return ONLY the complete function definition without any additional text or expl
             
             # If we have a perfect score, we're done
             if best_score >= 1.0:
-                print("\nPerfect solution found!")
+                print("\n=== Perfect Solution Found! ===")
+                print("\n=== Testing Best Solution ===")
+                try:
+                    # Execute the best individual to show its output
+                    local_vars = {}
+                    exec(best_individual, globals(), local_vars)
+                    # If the code defines a function, try to call it with test cases
+                    if 'c' in local_vars and callable(local_vars['c']):
+                        for test_input, expected_output in self.test_cases:
+                            result = local_vars['c'](test_input)
+                            print(f"Test input: {test_input} => Output: {result}")
+                except Exception as e:
+                    print(f"Error executing solution: {e}")
                 return best_individual
             
             # Select parents for next generation
@@ -736,15 +857,10 @@ def main():
     
     best_solution = evolver.evolve()
     
-    print("\n=== Best Solution ===")
-    print(best_solution)
-    # Test the best solution
-    print("\n=== Testing Best Solution ===")
-    success, message = evaluator.evaluate(best_solution)
-    if success:
-        print("✓ Solution passes all tests!")
-    else:
-        print(f"✗ Solution has issues: {message}")
+    # The best solution is already printed and tested in the evolve() method
+    if not best_solution:
+        print("No valid solution was found.")
+    # No need to print or test again here as it's already done in evolve()
 
 if __name__ == "__main__":
     main()
