@@ -23,21 +23,24 @@ CADET is a code evolution program inspired by the "alpha evolve" paper. This pro
    git clone https://github.com/DemenYunn/CADET.git
    cd CADET
 ```
-Install dependencies:
-
+2.Install dependencies:
+```
 pip install -r requirements.txt
+```
 Run the program:
+```
 python main.py
 ```
-
+#Docker Setup
+#Build the Docker image:
 ```
-Docker Setup
-Build the Docker image:
 
 docker-compose build
+```
 Run the container:
-
+```
 docker-compose run --rm code-evolver python main.py
+```
 Configuration
 Environment Variables
 Create a .env file in the project root to set environment variables:
@@ -49,10 +52,10 @@ PYTHONUNBUFFERED=1
 Docker Configuration
 Edit docker-compose.yml to:
 
-Mount additional volumes
-Expose ports
-Set environment variables
-Development
+#Mount additional volumes
+#Expose ports
+#Set environment variables
+#Development
 For development, set ENVIRONMENT=development in your .env file to install development dependencies.
 
 Contributing
