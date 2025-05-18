@@ -49,10 +49,10 @@ env
 Docker Configuration
 Edit docker-compose.yml to:
 
-#Mount additional volumes
-#Expose ports
-#Set environment variables
-##Development
+# Mount additional volumes
+# Expose ports
+# Set environment variables
+## Development
 For development, set ENVIRONMENT=development in your .env file to install development dependencies.
 
 ## Contributing
