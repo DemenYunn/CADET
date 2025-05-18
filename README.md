@@ -20,7 +20,7 @@ CADET is a code evolution program inspired by the "alpha evolve" paper. This pro
 
 1. Clone the repository:
    ```bash
-   git clone [https://github.com/DemenYunn/CADET.git](https://github.com/DemenYunn/CADET.git)
+   git clone https://github.com/DemenYunn/CADET.git
    cd CADET
 ```
 Install dependencies:
