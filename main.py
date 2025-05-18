@@ -116,14 +116,6 @@ class CodeEvolver:
         
         # Store test cases for execution time measurement
         self.test_cases = evaluator.test_cases
-        
-        # Define factor descriptions for LM Studio evaluation
-        self.factor_descriptions = {
-            'efficiency': "evaluate the code's time and space complexity",
-            'readability': "evaluate the code's clarity and ease of understanding",
-            'simplicity': "evaluate the code's minimalism and lack of complexity",
-            'maintainability': "evaluate how easy the code is to maintain and modify"
-        }
     
     def _read_code_from_file(self, file_path: str) -> str:
         """Read code from a file."""
@@ -382,28 +374,37 @@ Return ONLY the complete function definition without any additional text or expl
     
     def _evaluate_with_lm_studio(self, code: str) -> bool:
         """
-        Evaluate if the code meets the improvement factor criteria using LM Studio.
-        Returns True if the code aligns with the desired factor, False otherwise.
+        Evaluate how well the code matches the user's improvement request using LM Studio.
+        Returns True if the code aligns well with the user's intent, False otherwise.
         """
         try:
             response = self.client.chat.completions.create(
                 model=self.model,
                 messages=[
-                    {"role": "system", "content": "You are a code quality evaluator."},
+                    {"role": "system", "content": """You are an expert code evaluator. Analyze how well the code matches the user's improvement request.
+                    Consider aspects like:
+                    - Code structure and organization
+                    - Algorithmic efficiency
+                    - Readability and maintainability
+                    - Adherence to Python best practices
+                    - Specific improvements mentioned in the user's request
+                    """},
                     {"role": "user", "content": f"""
-                    Evaluate if this Python code aligns with: {self.improvement_factor}.
-                    Factor Description: {self.factor_descriptions.get(self.improvement_factor, '')}
+                    User's improvement request: "{self.improvement_factor}"
                     
                     Code to evaluate:
                     ```python
                     {code}
                     ```
                     
-                    Return ONLY 'True' if the code aligns well with the factor, 'False' otherwise.
-                    No explanation or additional text is needed.
+                    Based on the user's request, does this code effectively implement the desired improvements?
+                    Consider both explicit and implicit requirements in the user's request.
+                    
+                    Respond with ONLY 'True' if the code aligns well with the user's request, 'False' otherwise.
+                    Be strict but fair in your evaluation.
                     """}
                 ],
-                temperature=0.3,
+                temperature=0.2,  # Lower temperature for more consistent evaluations
                 max_tokens=10
             )
             result = response.choices[0].message.content.strip().lower()
