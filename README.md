@@ -57,7 +57,7 @@ Edit docker-compose.yml to:
 # Copying a file over to docker container
 This is needed because it will ask for a file and if you dont have it in your os/docker container/environment. So this command is only meant for people to run if you are running as a docker container we set up earlier in the same directory you downloaded from github "CADET" or "CADET-main" either way its got the python file in it too and a docker file ready for you to build and run. But before you run you must copy and paste this command or just type it. Make sure you change the file names if needed
 ```
-docker cp to_get_better.py {container_name}:/app/to_get_better.py
+docker cp to_optimize.py {container_name}:/app/to_optimize.py
 ```
 # Finding the name of container
 code-evolver:
