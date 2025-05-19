@@ -33,8 +33,8 @@ Run the program:
 # Build the Docker image:
 
 ```docker-compose build```
-Run the container:
 ```
+# Run the container:
 docker-compose run --rm code-evolver python main.py
 ```
 Configuration
