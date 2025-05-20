@@ -13,7 +13,7 @@ CADET is a code evolution program inspired by the "alpha evolve" paper. This pro
 - Python 3.10+
 - Docker and Docker Compose (for containerized setup)
 - Git (for version control)
-
+- LM Studio (for LLM support)
 ## Quick Start
 
 ### Local Development
